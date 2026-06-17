@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-import re
 
 # Sayfa Genişlik Ayarı
 st.set_page_config(page_title="Kantar Vardiya Özeti", layout="wide")
@@ -10,41 +9,35 @@ st.title("🚚 Kantar Çoklu Vardiya Özeti ve Sağlaması Otomasyonu")
 
 KURAL_DOSYASI = "kantar_kurallari.json"
 
-# Türkçe karakterleri temizleme fonksiyonu (Arama garantisi için)
-def turkce_temizle(metin):
-    metin = str(metin).lower().strip()
-    metin = metin.replace('ı', 'i').replace('ş', 's').replace('ğ', 'g').replace('ç', 'c').replace('ü', 'u').replace('ö', 'o')
-    # Sadece harf ve rakamları bırak
-    metin = re.sub(r'[^a-z0-9\s]', '', metin)
+# Harf ve Boşluk Temizleme (Garantili Eşleşme İçin)
+def temizle(metin):
+    metin = str(metin).upper().strip()
+    metin = metin.replace('I', 'İ').replace('Ş', 'S').replace('Ğ', 'G').replace('Ç', 'C').replace('Ü', 'U').replace('Ö', 'O').replace('İ', 'I')
     return metin
 
-# Varsayılan Şablon Kuralları
+# Tam Eşleşme Şablonu
 def kurallari_yukle():
     varsayilan = {
-        "DENİŞ TÜVENAN KÖMÜR": {"kelime": "denis", "ek_kelime": "tuvenan"},
-        "TÜRK PİYALE KÖMÜR": {"kelime": "piyale", "ek_kelime": ""},
-        "KENT ÇİM TABAN KÜLÜ": {"kelime": "kent", "ek_kelime": "taban"},
-        "KENT ÇİM UÇUCU KÜL": {"kelime": "kent", "ek_kelime": "ucucu"},
-        "SOMA ÇİMENTO TABAN KÜLÜ": {"kelime": "soma", "ek_kelime": "taban"},
-        "SOMA ÇİMENTO KOOP. TABAN": {"kelime": "koop", "ek_kelime": ""},
-        "SOMA ÇİMENTO UÇUCU KÜL": {"kelime": "soma", "ek_kelime": "ucucu"},
-        "BATISÖKE KÜL": {"kelime": "soke", "ek_kelime": ""},
-        "BATIÇİM UÇUCU KÜL (T)": {"kelime": "bati", "ek_kelime": "t"},
-        "BATIÇİM UÇUCU KÜL": {"kelime": "bati", "ek_kelime": "ucucu"},
-        "LİMAK TABAN KÜLÜ": {"kelime": "limak", "ek_kelime": "taban"},
-        "LİMAK UÇUCU KÜL": {"kelime": "limak", "ek_kelime": "ucucu"},
-        "ÇİMENTAŞ": {"kelime": "cimentas", "ek_kelime": ""},
-        "ALTIN ÇİMENTO TABAN KÜLÜ": {"kelime": "altin", "ek_kelime": ""},
-        "NARETRA UÇUCU KÜL": {"kelime": "naretra", "ek_kelime": ""}
+        "DENİŞ TÜVENAN KÖMÜR": {"kelime1": "DENİS", "kelime2": "TÜVENAN"},
+        "TÜRK PİYALE KÖMÜR": {"kelime1": "PİYALE", "kelime2": ""},
+        "KENT ÇİM TABAN KÜLÜ": {"kelime1": "KENT", "kelime2": "TABAN"},
+        "KENT ÇİM UÇUCU KÜL": {"kelime1": "KENT", "kelime2": "UÇUCU"},
+        "SOMA ÇİMENTO TABAN KÜLÜ": {"kelime1": "SOMA", "kelime2": "TABAN"},
+        "SOMA ÇİMENTO KOOP. TABAN": {"kelime1": "KOOP", "kelime2": ""},
+        "SOMA ÇİMENTO UÇUCU KÜL": {"kelime1": "SOMA", "kelime2": "UÇUCU"},
+        "BATISÖKE KÜL": {"kelime1": "SÖKE", "kelime2": ""},
+        "BATIÇİM UÇUCU KÜL (T)": {"kelime1": "BATI", "kelime2": "(T)"},
+        "BATIÇİM UÇUCU KÜL": {"kelime1": "BATI", "kelime2": "UÇUCU"},
+        "LİMAK TABAN KÜLÜ": {"kelime1": "LİMAK", "kelime2": "TABAN"},
+        "LİMAK UÇUCU KÜL": {"kelime1": "LİMAK", "kelime2": "UÇUCU"},
+        "ÇİMENTAŞ": {"kelime1": "ÇİMENTAŞ", "kelime2": ""},
+        "ALTIN ÇİMENTO TABAN KÜLÜ": {"kelime1": "ALTIN", "kelime2": ""},
+        "NARETRA UÇUCU KÜL": {"kelime1": "NARETRA", "kelime2": ""}
     }
     if os.path.exists(KURAL_DOSYASI):
         with open(KURAL_DOSYASI, "r", encoding="utf-8") as f:
             return json.load(f)
     return varsayilan
-
-def kurallari_kaydet(kurallar):
-    with open(KURAL_DOSYASI, "w", encoding="utf-8") as f:
-        json.dump(kurallar, f, ensure_ascii=False, indent=4)
 
 if 'kurallar' not in st.session_state:
     st.session_state.kurallar = kurallari_yukle()
@@ -52,24 +45,14 @@ if 'kurallar' not in st.session_state:
 # --- YAN MENÜ ---
 st.sidebar.header("⚙️ Firma / Kural Yönetimi")
 yeni_baslik = st.sidebar.text_input("Rapor Başlığı (Örn: ENGIN KÖMÜR)").upper().strip()
-aranacak_kelime = st.sidebar.text_input("Aranacak Anahtar Kelime (Örn: ENGIN)").strip()
+aranacak_k1 = st.sidebar.text_input("Aranacak 1. Kelime (Örn: ENGIN)").upper().strip()
+aranacak_k2 = st.sidebar.text_input("Aranacak 2. Kelime (İsteğe Bağlı)").upper().strip()
 
 if st.sidebar.button("➕ Yeni Firmayı / Kuralı Ekle"):
-    if yeni_baslik and aranacak_kelime:
-        st.session_state.kurallar[yeni_baslik] = {"kelime": turkce_temizle(aranacak_kelime), "ek_kelime": ""}
-        kurallari_kaydet(st.session_state.kurallar)
+    if yeni_baslik and aranacak_k1:
+        st.session_state.kurallar[yeni_baslik] = {"kelime1": aranacak_k1, "kelime2": aranacak_k2}
         st.sidebar.success(f"'{yeni_baslik}' başarıyla eklendi!")
         st.rerun()
-    else:
-        st.sidebar.error("Lütfen tüm alanları doldurun.")
-
-st.sidebar.subheader("🗑️ Kayıtlı Kuralları Sil")
-silinecek = st.sidebar.selectbox("Silmek istediğiniz kural", list(st.session_state.kurallar.keys()))
-if st.sidebar.button("❌ Seçili Kuralı Sil"):
-    del st.session_state.kurallar[silinecek]
-    kurallari_kaydet(st.session_state.kurallar)
-    st.sidebar.warning(f"'{silinecek}' silindi.")
-    st.rerun()
 
 # --- ANA EKRAN ---
 yuklenen_dosyalar = st.file_uploader("📂 Kantar Excel Dosyalarını Buraya Sürükleyin veya Seçin", type=["xlsx", "xls"], accept_multiple_files=True)
@@ -84,12 +67,12 @@ if yuklenen_dosyalar:
             
         df = pd.concat(tüm_veriler, ignore_index=True)
         
+        # Sütun İsimlerini Standartlaştırma
         sutun_haritasi = {
             'NET AĞIRLIK': 'NET_AGIRLIK', 'NET AGIRLIK': 'NET_AGIRLIK', 'NET': 'NET_AGIRLIK',
-            'PLAKA': 'PLAKA', 'ARAÇ': 'PLAKA', 'ARAC': 'PLAKA',
-            'MALZEME': 'MALZEME', 'ÜRÜN': 'MALZEME', 'URUN': 'MALZEME',
-            'NEREDEN GELDİ': 'NEREDEN_GELDI', 'NEREDEN GELDI': 'NEREDEN_GELDI', 'GELDİĞİ YER': 'NEREDEN_GELDI',
-            'NEREYE GİTTİ': 'NEREYE_GITTI', 'NEREYE GITTI': 'NEREYE_GITTI', 'GİTTİĞİ YER': 'NEREYE_GITTI',
+            'PLAKA': 'PLAKA', 'MALZEME': 'MALZEME', 'ÜRÜN': 'MALZEME',
+            'NEREDEN GELDİ': 'NEREDEN_GELDI', 'NEREDEN GELDI': 'NEREDEN_GELDI',
+            'NEREYE GİTTİ': 'NEREYE_GITTI', 'NEREYE GITTI': 'NEREYE_GITTI',
             'FİRMA': 'FIRMA', 'FIRMA': 'FIRMA'
         }
         
@@ -108,11 +91,9 @@ if yuklenen_dosyalar:
         
         df['NET_AGIRLIK'] = pd.to_numeric(df['NET_AGIRLIK'], errors='coerce').fillna(0).astype(int)
         
-        # Karakter temizleme işlemi uygulanıyor
-        df['ARAMA_HAVUZU'] = (df['FIRMA'].astype(str) + " " + 
-                              df['MALZEME'].astype(str) + " " + 
-                              df['NEREDEN_GELDI'].astype(str) + " " + 
-                              df['NEREYE_GITTI'].astype(str)).apply(turkce_temizle)
+        # Arama havuzunu hem normal hem temizlenmiş formatta düz metne çeviriyoruz
+        df['ARAMA_DUZ'] = (df['FIRMA'].astype(str) + " " + df['MALZEME'].astype(str) + " " + df['NEREDEN_GELDI'].astype(str) + " " + df['NEREYE_GITTI'].astype(str)).str.upper()
+        df['ARAMA_TEMIZ'] = df['ARAMA_DUZ'].apply(temizle)
 
         # --- HESAPLAMALAR ---
         rapor_listesi = []
@@ -120,15 +101,18 @@ if yuklenen_dosyalar:
         toplam_tonaj = 0
         
         for isim, detay in st.session_state.kurallar.items():
-            kelime = turkce_temizle(detay["kelime"])
-            ek_kelime = turkce_temizle(detay.get("ek_kelime", ""))
+            k1 = detay["kelime1"].upper()
+            k2 = detay["kelime2"].upper() if "kelime2" in detay else ""
             
-            alt_df = df[df['ARAMA_HAVUZU'].str.contains(kelime, na=False)]
-            if ek_kelime:
-                alt_df = alt_df[alt_df['ARAMA_HAVUZU'].str.contains(ek_kelime, na=False)]
-            
+            # Hem Türkçe karakterli hem karaktersiz havuzda eş zamanlı arama yapıyoruz
+            mask = (df['ARAMA_DUZ'].str.contains(k1, na=False) | df['ARAMA_TEMIZ'].str.contains(temizle(k1), na=False))
+            if k2:
+                mask = mask & (df['ARAMA_DUZ'].str.contains(k2, na=False) | df['ARAMA_TEMIZ'].str.contains(temizle(k2), na=False))
+                
+            alt_df = df[mask]
             a_sayisi = len(alt_df)
             t_sum = alt_df['NET_AGIRLIK'].sum()
+            
             toplam_arac += a_sayisi
             toplam_tonaj += t_sum
             
@@ -138,12 +122,12 @@ if yuklenen_dosyalar:
         toplam_df = pd.DataFrame([{"AÇIKLAMA / MALZEME": "🏆 TOPLAM SEFER/TONAJ", "ARAÇ SAYISI": toplam_arac, "TONAJ (kg)": f"{toplam_tonaj:,}".replace(",", ".")}])
         
         # SAĞLAMA BÖLÜMÜ
-        kolin_df = df[df['ARAMA_HAVUZU'].str.contains("kolin", na=False)]
-        tuvenan_df = df[df['ARAMA_HAVUZU'].str.contains("tuvenan", na=False)]
-        hidrogen_df = df[df['ARAMA_HAVUZU'].str.contains("hidro|engin", na=False)]
-        kul_df = df[df['ARAMA_HAVUZU'].str.contains("kul", na=False)]
-        cimento_maden_df = df[df['ARAMA_HAVUZU'].str.contains("soma|bati|kent|naretra|maden|cimen|limak", na=False)]
-        hurda_df = df[df['ARAMA_HAVUZU'].str.contains("hurda", na=False)]
+        kolin_df = df[df['ARAMA_DUZ'].str.contains("KOLİN|KOLIN", na=False)]
+        tuvenan_df = df[df['ARAMA_DUZ'].str.contains("TÜVENAN|TUVENAN", na=False)]
+        hidrogen_df = df[df['ARAMA_DUZ'].str.contains("HİDRO|HIDRO|ENGİN|ENGIN", na=False)]
+        kul_df = df[df['ARAMA_DUZ'].str.contains("KÜL|KUL", na=False)]
+        cimento_maden_df = df[df['ARAMA_DUZ'].str.contains("SOMA|BATI|KENT|NARETRA|MADEN|ÇİMEN|CIMEN|LİMAK|LIMAK", na=False)]
+        hurda_df = df[df['ARAMA_DUZ'].str.contains("HURDA", na=False)]
         
         saglama_listesi = [
             {"SAĞLAMASI": "KOLİN", "ARAÇ SAYISI": len(kolin_df), "TONAJ": f"{kolin_df['NET_AGIRLIK'].sum():,}".replace(",", ".")},
@@ -155,9 +139,8 @@ if yuklenen_dosyalar:
         ]
         saglama_df = pd.DataFrame(saglama_listesi)
 
-        # --- EKRANDA GÖSTERİM (2 KOLON) ---
+        # --- EKRANDA GÖSTERİM ---
         sol_kolon, sag_kolon = st.columns([6, 5])
-        
         with sol_kolon:
             st.subheader(f"📋 Birleştirilmiş Vardiya Özet Taslağı ({len(yuklenen_dosyalar)} Dosya)")
             st.dataframe(rapor_df, use_container_width=True, hide_index=True)
